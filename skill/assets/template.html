@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>월별 입고내역 검토 도구</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#f2f4f8; --card:#ffffff; --border:#e5e7eb; --ink:#1a1f2b; --sub:#6b7280;
+    --blue:#2f6fed; --blue2:#6a5cf5; --blue-weak:#eaf1ff; --blue-dark:#2559c9;
+    --grad:linear-gradient(135deg,var(--blue) 0%,var(--blue2) 100%);
+    --green:#0ea45c; --green-weak:#e5f6ec;
+    --red:#e0433f; --red-weak:#fdeceb;
+    --amber:#c07d05; --amber-weak:#fdf3df;
+    --violet:#7c5cf0; --violet-weak:#f0ecff;
+    --pink:#e0447f; --pink-weak:#fdeaf1;
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 2px 8px rgba(16,24,40,.06);
+    --shadow-lg:0 8px 24px rgba(16,24,40,.10), 0 2px 6px rgba(16,24,40,.06);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Pretendard","Malgun Gothic",-apple-system,sans-serif;font-size:14px;line-height:1.5;}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 24px 80px;}
+
+  /* 헤더 */
+  .topbar{background:var(--card);border:1px solid var(--border);border-radius:16px;margin-bottom:18px;padding:0;box-shadow:var(--shadow);position:relative;overflow:hidden;}
+  .topbar-accent{height:4px;background:var(--grad);}
+  .topbar-inner{display:flex;gap:14px;align-items:flex-start;justify-content:space-between;padding:16px 20px;}
+  .topbar-left{display:flex;gap:14px;align-items:flex-start;}
+  .hamburger-btn{flex:none;width:40px;height:40px;border-radius:10px;border:1px solid var(--border);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink);transition:.15s;}
+  .hamburger-btn:hover{background:#f7f8fa;transform:translateY(-1px);}
+  .topbar-icon{font-size:22px;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:none;background:var(--grad);color:#fff;box-shadow:0 4px 10px rgba(47,111,237,.35);}
+  h1{font-size:18.5px;margin:2px 0 5px;letter-spacing:-.2px;font-weight:800;}
+  .lead{color:var(--sub);margin:0;font-size:12.5px;}
+
+  /* 좌측 슬라이드 사이드바 (햄버거) */
+  .drawer-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.4);z-index:40;display:none;}
+  .drawer-backdrop.open{display:block;}
+  .drawer{position:fixed;top:0;left:0;bottom:0;width:280px;background:#fff;z-index:41;box-shadow:12px 0 40px rgba(16,24,40,.18);transform:translateX(-105%);transition:transform .22s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;}
+  .drawer.open{transform:translateX(0);}
+  .drawer-header{display:flex;align-items:center;gap:12px;padding:20px;background:var(--grad);color:#fff;}
+  .drawer-logo{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:20px;flex:none;}
+  .drawer-title{font-weight:800;font-size:14.5px;}
+  .drawer-sub{font-size:11.5px;opacity:.85;}
+  .drawer-close{margin-left:auto;width:28px;height:28px;border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:8px;cursor:pointer;font-size:13px;}
+  .drawer-close:hover{background:rgba(255,255,255,.3);}
+  .drawer-body{padding:14px;}
+  .nav-menu-item{display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;background:none;border:none;border-radius:10px;text-align:left;font-size:13.5px;font-weight:700;color:var(--ink);cursor:pointer;margin-bottom:4px;transition:.15s;}
+  .nav-menu-item:hover{background:#f5f6f9;}
+  .nav-menu-item.active{background:var(--blue-weak);color:var(--blue);}
+  .nav-menu-item .ic{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;background:#eef1f6;flex:none;}
+  .nav-menu-item.active .ic{background:#fff;}
+  .nav-menu-divider{height:1px;background:var(--border);margin:10px 6px;}
+
+  .admin-btn{flex:none;white-space:nowrap;padding:8px 13px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--sub);font-size:12.5px;font-weight:700;cursor:pointer;}
+  .admin-btn:hover{background:#f7f8fa;}
+  .admin-btn.on{color:var(--green);border-color:var(--green-weak);background:var(--green-weak);}
+  .admin-note{font-size:11px;color:var(--sub);margin-top:6px;text-align:right;max-width:220px;}
+
+  /* 스테퍼 */
+  .stepper{display:flex;align-items:center;gap:0;margin:0 0 18px;flex-wrap:wrap;padding:10px 16px;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);}
+  .stepper .s{display:flex;align-items:center;gap:6px;color:var(--sub);font-size:12px;font-weight:600;white-space:nowrap;}
+  .stepper .s .dot{width:20px;height:20px;border-radius:50%;background:#eef1f6;color:var(--sub);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none;}
+  .stepper .arrow{color:var(--sub);opacity:.4;margin:0 10px;font-size:13px;}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 22px;margin-bottom:16px;box-shadow:var(--shadow);transition:box-shadow .15s, transform .15s;}
+  .card h2{font-size:15px;margin:0 0 14px;padding-bottom:12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+  .card h2 .h2-ic{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--blue-weak);flex:none;}
+  .h2-ic.amber{background:var(--amber-weak);} .h2-ic.violet{background:var(--violet-weak);}
+  .h2-ic.red{background:var(--red-weak);} .h2-ic.pink{background:var(--pink-weak);} .h2-ic.green{background:var(--green-weak);}
+
+  .row{display:flex;gap:16px;flex-wrap:wrap;}
+  .col{flex:1;min-width:220px;}
+  label{display:block;font-size:12px;color:var(--sub);margin-bottom:4px;}
+  input[type=text], input[type=number], input[type=month], select{
+    width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:#fff;color:var(--ink);
+  }
+  input[type=text]:focus, input[type=number]:focus, input[type=month]:focus, select:focus{outline:none;border-color:var(--blue);}
+  input[type=file]{font-size:12px;}
+  .btn{appearance:none;border:1px solid var(--border);background:#fff;color:var(--ink);padding:8px 14px;border-radius:9px;font-size:13px;cursor:pointer;font-weight:700;transition:.15s;}
+  .btn:hover{background:#f7f8fa;transform:translateY(-1px);box-shadow:0 3px 8px rgba(16,24,40,.08);}
+  .btn.primary{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 3px 10px rgba(47,111,237,.3);}
+  .btn.primary:hover{filter:brightness(1.05);box-shadow:0 5px 14px rgba(47,111,237,.4);}
+  .btn.primary:disabled{background:#b7c6ea;border-color:#b7c6ea;color:#fff;cursor:not-allowed;box-shadow:none;transform:none;filter:none;}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--blue);padding:6px 4px;}
+  .btn.ghost:hover{transform:none;box-shadow:none;background:transparent;text-decoration:underline;}
+  .btn.danger{color:var(--red);}
+  .btn.small{padding:5px 10px;font-size:12px;}
+  details{border:1px solid var(--border);border-radius:12px;padding:2px 16px;background:#fff;margin-bottom:18px;}
+  summary{cursor:pointer;font-weight:700;padding:12px 0;font-size:13px;color:var(--ink);}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:10px 0 4px;}
+  @media (max-width:640px){ .grid4{grid-template-columns:repeat(2,1fr);} }
+  .reason{white-space:normal !important;max-width:280px;min-width:200px;}
+  .diff{font-weight:700;}
+  .diff.zero{color:var(--sub);font-weight:400;}
+  .diff.pos{color:var(--red);}
+  .diff.neg{color:var(--blue);}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+
+  .setup-row-top{display:grid;grid-template-columns:220px 1fr;gap:20px;align-items:start;margin-bottom:18px;}
+  @media (max-width:640px){ .setup-row-top{grid-template-columns:1fr;} }
+  .mini-drop{display:block;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--sub);cursor:pointer;background:#fafbfc;transition:.15s;}
+  .mini-drop:hover, .mini-drop.dragover{border-color:var(--blue);background:var(--blue-weak);color:var(--blue);}
+
+  .setup-row-uploads{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:4px;}
+  @media (max-width:760px){ .setup-row-uploads{grid-template-columns:1fr;} }
+  .upload-col{display:flex;flex-direction:column;}
+  .dropzone{border:1.5px dashed var(--border);border-radius:14px;padding:20px 16px;text-align:center;cursor:pointer;background:#fafbfc;transition:.15s;display:block;}
+  .dropzone:hover, .dropzone.dragover{border-color:var(--blue);background:var(--blue-weak);transform:translateY(-1px);}
+  .dz-icon{width:44px;height:44px;border-radius:12px;background:var(--blue-weak);display:flex;align-items:center;justify-content:center;font-size:20px;margin:0 auto 8px;}
+  .dz-title{font-weight:700;font-size:13.5px;}
+  .dz-sub{font-size:11.5px;color:var(--sub);margin:2px 0 8px;}
+  .dz-filename{font-size:12px;color:var(--blue);font-weight:600;word-break:break-all;}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th,td{padding:10px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--border);}
+  th{background:#f5f7fb;color:var(--sub);font-weight:800;position:sticky;top:0;border-bottom:1px solid var(--border);text-transform:uppercase;font-size:11px;letter-spacing:.02em;}
+  tbody tr:nth-child(even){background:#fafbfd;}
+  tbody tr:hover{background:var(--blue-weak);}
+  .tablewrap{max-height:420px;overflow:auto;border:1px solid var(--border);border-radius:14px;}
+  .pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:11.5px;font-weight:700;}
+  .pill.ok{background:var(--green-weak);color:var(--green);}
+  .pill.ng{background:var(--red-weak);color:var(--red);}
+  .pill.warn{background:var(--amber-weak);color:var(--amber);}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 18px 16px;box-shadow:var(--shadow);position:relative;transition:.15s;}
+  .stat:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);}
+  .stat .icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;margin-bottom:10px;background:#eef1f6;color:var(--sub);}
+  .stat.ok .icon{background:var(--green-weak);color:var(--green);}
+  .stat.ng .icon{background:var(--red-weak);color:var(--red);}
+  .stat.warn .icon{background:var(--amber-weak);color:var(--amber);}
+  .stat .num{font-size:26px;font-weight:800;line-height:1.1;}
+  .stat .lbl{font-size:12px;color:var(--sub);margin-top:4px;}
+  .stat.ng .num{color:var(--red);}
+  .stat.ok .num{color:var(--green);}
+  .stat.warn .num{color:var(--amber);}
+  .banner{border-radius:12px;padding:14px 16px;font-weight:700;margin-bottom:14px;font-size:14px;border:1px solid transparent;}
+  .banner.ok{background:var(--green-weak);color:var(--green);border-color:#cdeedb;}
+  .banner.ng{background:var(--red-weak);color:var(--red);border-color:#f7d3d1;}
+  .muted{color:var(--sub);font-weight:400;font-size:12.5px;}
+  .mapping-row{display:grid;grid-template-columns:140px 1fr 90px;gap:10px;align-items:center;padding:6px 0;}
+  .filerow{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#fafbfc;}
+  .filerow .name{font-weight:600;flex:1;}
+  .tag{font-size:11px;background:#eef1f6;color:var(--sub);border-radius:6px;padding:3px 7px;border:1px solid var(--border);}
+  .custom-rule{display:grid;grid-template-columns:1fr 110px 120px 1fr 30px;gap:8px;align-items:center;margin-bottom:6px;}
+  .hint{font-size:11.5px;color:var(--sub);margin-top:4px;}
+  .tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;position:sticky;top:8px;z-index:5;}
+  .tab{padding:7px 13px;border-radius:8px;background:#fff;border:1px solid var(--border);cursor:pointer;font-size:12.5px;font-weight:700;color:var(--sub);text-decoration:none;}
+  .tab:hover{color:var(--blue);border-color:var(--blue);}
+  td.num, th.num{text-align:right;font-variant-numeric:tabular-nums;}
+  .empty-state{border:1.5px dashed var(--border);border-radius:12px;padding:36px 20px;text-align:center;color:var(--sub);background:#fff;}
+  .empty-state .big{font-size:28px;margin-bottom:6px;}
+  .inline-hint{font-size:12px;color:var(--red);margin-top:10px;min-height:16px;}
+  .filterbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .filterbar select{width:auto;min-width:160px;}
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-top:12px;}
+  .photo-thumb{position:relative;border-radius:10px;overflow:hidden;background:#fff;border:1px solid var(--border);}
+  .photo-thumb img{width:100%;height:90px;object-fit:cover;display:block;cursor:pointer;}
+  .photo-thumb .cap{width:100%;border:none;border-top:1px solid var(--border);background:transparent;font-size:11px;padding:5px 7px;color:var(--ink);}
+  .photo-thumb .rm{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:1;cursor:pointer;}
+  .photo-meta{font-size:11.5px;color:var(--sub);margin-top:4px;}
+  .locked-card{text-align:center;padding:44px 24px;}
+  .locked-card .lock-icon{font-size:34px;margin-bottom:10px;}
+  .locked-card p{color:var(--sub);font-size:13px;margin:6px 0 18px;}
+  body:not([data-view="admin"]) #adminOnlyPanels{display:none;}
+  .lock-out-link{background:none;border:none;color:var(--sub);font-size:11.5px;text-decoration:underline;cursor:pointer;margin-top:6px;display:none;}
+  .view-badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;margin-bottom:8px;}
+  body[data-view="admin"] .view-badge{background:var(--blue-weak);color:var(--blue);}
+  body:not([data-view="admin"]) .view-badge{background:var(--green-weak);color:var(--green);}
+  @media print{
+    .no-print{display:none !important;}
+    body{background:#fff;}
+    .card, .topbar, .stat, .tablewrap{box-shadow:none;border:1px solid #ccc;break-inside:avoid;}
+    .tablewrap{max-height:none;overflow:visible;}
+    .tabs{position:static;}
+    .pill{border:1px solid currentColor;}
+  }
+  ul.issues{margin:0;padding-left:18px;}
+  ul.issues li{margin-bottom:6px;}
+  .footer-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px;align-items:center;}
+  .req{color:var(--red);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="drawer-backdrop no-print" id="drawerBackdrop"></div>
+  <div class="drawer no-print" id="navMenu">
+    <div class="drawer-header">
+      <div class="drawer-logo">📦</div>
+      <div>
+        <div class="drawer-title">입고내역 검토 도구</div>
+        <div class="drawer-sub">구매물류팀</div>
+      </div>
+      <button class="drawer-close" id="drawerCloseBtn" type="button">✕</button>
+    </div>
+    <div class="drawer-body" id="drawerBody"></div>
+  </div>
+
+  <div class="topbar">
+    <div class="topbar-accent"></div>
+    <div class="topbar-inner">
+      <div class="topbar-left">
+        <button class="hamburger-btn no-print" id="hamburgerBtn" type="button" title="메뉴">☰</button>
+        <div class="topbar-icon">📦</div>
+        <div>
+          <h1>월별 입고내역 검토 도구</h1>
+          <p class="lead">기초자료(전체 입고 내역)와 업체별 제출자료를 대사하여 통과/불합격을 판정하고, 결과 엑셀과 특이사항 리포트를 생성합니다. 컬럼 매핑과 규칙은 이 브라우저에 저장되어 다음 달에도 그대로 재사용됩니다.</p>
+        </div>
+      </div>
+      <div class="no-print" style="text-align:right;">
+        <div class="view-badge" id="viewBadge">사용자 화면</div>
+        <div id="userStatusLine" class="hint" style="display:none;font-weight:700;color:var(--green);margin-top:6px;"></div>
+        <button class="lock-out-link" id="userLockOutLink" type="button" style="display:none;">잠그기</button>
+        <div class="admin-note">☰ 메뉴에서 사용자 화면 · 관리자 화면을 선택해 들어갈 수 있습니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stepper no-print">
+    <span class="s"><span class="dot">1</span>대상월 선택</span><span class="arrow">→</span>
+    <span class="s"><span class="dot">2</span>기초·업체자료 업로드</span><span class="arrow">→</span>
+    <span class="s"><span class="dot">3</span>검토 실행</span><span class="arrow">→</span>
+    <span class="s"><span class="dot">4</span>관리자 모드에서 상세 확인</span>
+  </div>
+
+  <!-- 설정 카드: 대상월 · 규칙 · 기초/업체 자료 · 실행 -->
+  <div class="card no-print">
+    <h2><span class="h2-ic">⚙</span> 검토 설정</h2>
+
+    <div class="setup-row-top">
+      <div>
+        <label>검토 대상월 <span class="req">*</span></label>
+        <input type="month" id="targetMonth">
+      </div>
+      <div>
+        <label>전월 결과파일 <span class="muted">(선택 — 이 도구가 지난달 생성한 엑셀을 그대로 올리면 전월비교가 활성화됩니다)</span></label>
+        <label class="mini-drop" for="prevFile" id="prevDrop"><span id="prevFileName">클릭 또는 파일을 끌어다 놓으세요</span></label>
+        <input type="file" id="prevFile" accept=".xlsx,.xls" style="display:none">
+        <div id="prevStatus" class="hint"></div>
+      </div>
+    </div>
+
+    <div id="adminOnlyPanels">
+    <details id="rulesDetails">
+      <summary id="rulesSummary">🔧 판정 규칙 설정</summary>
+      <div style="padding:6px 0 16px;">
+        <div class="grid3">
+          <div>
+            <label>수량 허용오차 (%)</label>
+            <input type="number" id="qtyTol" value="0" min="0" step="0.1">
+            <div class="hint">기초자료 대비 업체자료 수량 차이가 이 값을 넘으면 불합격</div>
+          </div>
+          <div>
+            <label>단가·금액 허용오차 (%)</label>
+            <input type="number" id="amtTol" value="0" min="0" step="0.1">
+            <div class="hint">단가/금액 차이가 이 값을 넘으면 불합격</div>
+          </div>
+          <div>
+            <label>전월 대비 이상변동 임계치 (%)</label>
+            <input type="number" id="momTol" value="20" min="0" step="1">
+            <div class="hint">업체별 합계가 전월 대비 이 값 이상 증감하면 특이사항 표시</div>
+          </div>
+        </div>
+        <div style="margin-top:16px;">
+          <label style="margin-bottom:8px;">추가 규칙 (관리자가 자유롭게 추가) <span class="hint" style="display:inline;">— 아래 항목이 지정한 값을 넘으면 불합격 사유로 추가됩니다</span></label>
+          <div id="customRuleList"></div>
+          <button class="btn small" id="addRuleBtn" type="button">+ 규칙 추가</button>
+        </div>
+        <div class="footer-actions">
+          <button class="btn ghost small" id="changePinBtn" type="button">관리자 PIN 변경</button>
+          <button class="btn primary small" id="saveRulesBtn" type="button">규칙 저장</button>
+        </div>
+      </div>
+    </details>
+
+    <details id="usersDetails">
+      <summary id="usersSummary">👥 사용자 권한 관리</summary>
+      <div style="padding:6px 0 16px;">
+        <p class="hint" style="margin-bottom:12px;">여기서 등록한 사용자는 사용자 화면에서 이름+접근코드로 "상세 자료 보기"를 열 수 있습니다. 다른 PC에서도 같은 사용자를 쓰려면 아래 "내보내기" 내용을 그 PC의 "가져오기"에 붙여넣어 동기화해야 합니다(자동 동기화 아님).</p>
+        <div id="usersList"></div>
+        <div class="footer-actions" style="justify-content:flex-start;margin-top:10px;">
+          <button class="btn small" id="addUserBtn" type="button">+ 사용자 추가</button>
+          <button class="btn ghost small" id="exportUsersBtn" type="button">내보내기</button>
+          <button class="btn ghost small" id="importUsersBtn" type="button">가져오기</button>
+        </div>
+        <div style="margin-top:16px;">
+          <label style="margin-bottom:8px;">최근 열람 기록</label>
+          <div id="accessLogList"></div>
+        </div>
+      </div>
+    </details>
+    </div>
+
+    <div class="setup-row-uploads">
+      <div class="upload-col">
+        <label class="dropzone" for="baseFile" id="baseDrop">
+          <div class="dz-icon">📥</div>
+          <div class="dz-title">기초자료 <span class="req">*</span></div>
+          <div class="dz-sub">전체 입고 내역 · 1개 파일</div>
+          <div class="dz-filename" id="baseFileName">클릭 또는 파일을 끌어다 놓으세요</div>
+        </label>
+        <input type="file" id="baseFile" accept=".xlsx,.xls,.csv" style="display:none">
+        <div id="baseMappingArea"></div>
+      </div>
+      <div class="upload-col">
+        <label class="dropzone" for="vendorFiles" id="vendorDrop">
+          <div class="dz-icon">🏢</div>
+          <div class="dz-title">업체별 자료 <span class="req">*</span></div>
+          <div class="dz-sub">여러 개 가능 · 업체명 컬럼 포함 통합파일도 가능</div>
+          <div class="dz-filename" id="vendorFileName">클릭 또는 파일을 끌어다 놓으세요</div>
+        </label>
+        <input type="file" id="vendorFiles" accept=".xlsx,.xls,.csv" multiple style="display:none">
+        <div id="vendorMappingArea"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;">
+      <button class="btn primary" id="runBtn" type="button" style="width:100%;padding:12px;font-size:14.5px;" disabled>검토 실행</button>
+      <div class="inline-hint" id="runHint">대상월, 기초자료, 업체별 자료를 모두 채우면 실행할 수 있습니다.</div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="resultsArea">
+    <div class="empty-state" id="emptyState">
+      <div class="big">📋</div>
+      아직 검토 결과가 없습니다. 위 검토 설정을 채운 뒤 "검토 실행"을 눌러주세요.
+    </div>
+  </div>
+
+</div>
+
+<script>
+const LS_BASE_MAP = 'ib_base_mapping_v1';
+const LS_VENDOR_MAP = 'ib_vendor_mapping_v1';
+const LS_RULES = 'ib_rules_v1';
+const LS_ADMIN_PIN = 'ib_admin_pin';
+const SS_ADMIN_UNLOCKED = 'ib_admin_unlocked';
+const LS_USERS = 'ib_users_v1';
+const LS_ACCESS_LOG = 'ib_access_log_v1';
+const SS_USER_UNLOCKED = 'ib_user_unlocked';
+const SS_USER_NAME = 'ib_user_name';
+
+const FIELD_DEFS = [
+  {key:'date', label:'입고일자', synonyms:['입고일자','입고일','일자','입고날짜','거래일자','전표일자']},
+  {key:'vendor', label:'업체명', synonyms:['업체명','거래처명','거래처','업체','공급업체','매입처']},
+  {key:'itemCode', label:'품목코드', synonyms:['품목코드','자재코드','상품코드','품번']},
+  {key:'itemName', label:'품목명', synonyms:['품목명','품명','상품명','자재명']},
+  {key:'qty', label:'수량', synonyms:['수량','입고수량','입고량']},
+  {key:'price', label:'단가', synonyms:['단가','입고단가','구매단가']},
+  {key:'amount', label:'금액', synonyms:['금액','입고금액','공급가액','합계금액','금액합계']},
+];
+
+let STATE = {
+  base: null,
+  vendors: [],  // 각 항목: {fileName, headers, rows, mapping, box, photos:[{file,url,caption}]}
+  prevSummary: null,
+  results: null
+};
+
+function $(id){ return document.getElementById(id); }
+
+function loadJSON(key, fallback){
+  try{ const v = localStorage.getItem(key); return v? JSON.parse(v): fallback; }catch(e){ return fallback; }
+}
+function saveJSON(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+/* ---------- 잠금 (화면 노출 방지용 PIN/코드 — 진짜 보안 아님) ----------
+   두 등급: 관리자(PIN) = 규칙·사용자 관리 + 상세 열람 전부.
+            부여된 사용자(이름+코드, 관리자가 등록) = 상세 열람만, 관리 기능은 불가. */
+function getAdminPin(){ try{ return localStorage.getItem(LS_ADMIN_PIN); }catch(e){ return null; } }
+function isAdminUnlocked(){ try{ return sessionStorage.getItem(SS_ADMIN_UNLOCKED) === '1'; }catch(e){ return false; } }
+function setAdminUnlocked(v){ try{ sessionStorage.setItem(SS_ADMIN_UNLOCKED, v?'1':'0'); }catch(e){} }
+function isUserUnlocked(){ try{ return sessionStorage.getItem(SS_USER_UNLOCKED) === '1'; }catch(e){ return false; } }
+function getUnlockedUserName(){ try{ return sessionStorage.getItem(SS_USER_NAME) || ''; }catch(e){ return ''; } }
+function setUserUnlocked(v, name){ try{ sessionStorage.setItem(SS_USER_UNLOCKED, v?'1':'0'); sessionStorage.setItem(SS_USER_NAME, v?name:''); }catch(e){} }
+function isDetailUnlocked(){ return isAdminUnlocked() || isUserUnlocked(); }
+function lockAll(){ setAdminUnlocked(false); setUserUnlocked(false,''); }
+
+/* ---------- 화면 전환: 관리자 화면 / 사용자 화면 (좌측 상단 ☰ 메뉴) ---------- */
+let currentView = isAdminUnlocked() ? 'admin' : 'user';
+function applyView(){
+  document.body.dataset.view = currentView;
+  $('viewBadge').textContent = currentView==='admin' ? '관리자 화면' : '사용자 화면';
+  updateUserStatusLine();
+  renderNavMenu();
+  if(currentView==='admin') renderUsersPanel();
+}
+function renderNavMenu(){
+  const menu = $('drawerBody');
+  let html = `<button class="nav-menu-item ${currentView==='user'?'active':''}" data-nav="user" type="button"><span class="ic">📋</span>사용자 화면${currentView==='user'?' · 현재':''}</button>`;
+  html += `<button class="nav-menu-item ${currentView==='admin'?'active':''}" data-nav="admin" type="button"><span class="ic">🔧</span>관리자 화면${currentView==='admin'?' · 현재':''}</button>`;
+  if(currentView==='admin'){
+    html += `<div class="nav-menu-divider"></div><button class="nav-menu-item" data-nav="logout" type="button"><span class="ic">🔒</span>잠그고 나가기</button>`;
+  }
+  menu.innerHTML = html;
+  menu.querySelectorAll('.nav-menu-item').forEach(btn=>btn.addEventListener('click', ()=>handleNavClick(btn.dataset.nav)));
+}
+function closeNavMenu(){ $('navMenu').classList.remove('open'); $('drawerBackdrop').classList.remove('open'); }
+function toggleNavMenu(){ renderNavMenu(); $('navMenu').classList.toggle('open'); $('drawerBackdrop').classList.toggle('open'); }
+function handleNavClick(target){
+  closeNavMenu();
+  if(target==='user'){
+    if(currentView==='user') return;
+    if(!confirm('사용자 화면으로 전환할까요? (관리자 잠금은 유지되며, 완전히 잠그려면 "잠그고 나가기"를 사용하세요)')) return;
+    currentView='user'; applyView(); if(STATE.results) renderResults();
+  } else if(target==='admin'){
+    if(currentView==='admin') return;
+    adminUnlockFlow();
+  } else if(target==='logout'){
+    handleLockOutClick();
+  }
+}
+function updateUserStatusLine(){
+  const line = $('userStatusLine');
+  const btn = $('userLockOutLink');
+  if(currentView==='user' && isUserUnlocked()){
+    line.style.display = 'block';
+    line.textContent = `🔓 ${getUnlockedUserName()}님으로 열람 중`;
+    btn.style.display = 'inline';
+  } else {
+    line.style.display = 'none';
+    btn.style.display = 'none';
+  }
+}
+function handleUserLockOutClick(){
+  if(!confirm('열람을 종료하고 다시 잠글까요?')) return;
+  setUserUnlocked(false, '');
+  updateUserStatusLine();
+  if(STATE.results) renderResults();
+}
+function handleLockOutClick(){
+  if(!confirm('관리자 잠금을 해제하고 사용자 화면으로 돌아갈까요?')) return;
+  lockAll();
+  currentView = 'user';
+  applyView();
+  if(STATE.results) renderResults();
+}
+function adminUnlockFlow(){
+  const savedPin = getAdminPin();
+  if(!savedPin){
+    const p1 = prompt('관리자 PIN이 아직 설정되지 않았습니다. 사용할 PIN을 입력하세요 (4자리 이상).');
+    if(!p1) return;
+    if(p1.length < 4){ alert('4자리 이상으로 설정해주세요.'); return; }
+    const p2 = prompt('확인을 위해 한 번 더 입력하세요.');
+    if(p1 !== p2){ alert('입력한 PIN이 서로 다릅니다. 다시 시도해주세요.'); return; }
+    try{ localStorage.setItem(LS_ADMIN_PIN, p1); }catch(e){}
+    setAdminUnlocked(true);
+    alert('관리자 PIN이 설정되었습니다. 이 PIN은 이 브라우저에만 저장되며, 다른 PC에서는 다시 설정해야 합니다.');
+  } else {
+    const p = prompt('관리자 PIN을 입력하세요.');
+    if(p === null) return;
+    if(p !== savedPin){ alert('PIN이 일치하지 않습니다.'); return; }
+    setAdminUnlocked(true);
+  }
+  currentView = 'admin';
+  applyView();
+  if(STATE.results) renderResults();
+}
+function userUnlockFlow(){
+  const users = loadJSON(LS_USERS, []);
+  if(!users.length){ alert('아직 관리자가 등록한 사용자가 없습니다. 관리자에게 권한 등록을 요청해주세요.'); return; }
+  const name = prompt('이름을 입력하세요.');
+  if(!name) return;
+  const code = prompt('관리자에게 부여받은 접근 코드를 입력하세요.');
+  if(code === null) return;
+  const match = users.find(u=>u.active && u.name===name.trim() && u.code===code.trim());
+  if(!match){ alert('이름 또는 접근 코드가 일치하지 않거나, 권한이 해제된 사용자입니다.'); return; }
+  setUserUnlocked(true, match.name);
+  pushAccessLog(match.name);
+  updateUserStatusLine();
+  if(STATE.results) renderResults();
+}
+function changeAdminPin(){
+  const savedPin = getAdminPin();
+  if(savedPin){
+    const cur = prompt('현재 관리자 PIN을 입력하세요.');
+    if(cur === null) return;
+    if(cur !== savedPin){ alert('PIN이 일치하지 않습니다.'); return; }
+  }
+  const p1 = prompt('새 PIN을 입력하세요 (4자리 이상).');
+  if(!p1 || p1.length<4){ alert('4자리 이상으로 입력해주세요.'); return; }
+  const p2 = prompt('새 PIN을 한 번 더 입력하세요.');
+  if(p1 !== p2){ alert('입력한 PIN이 서로 다릅니다.'); return; }
+  try{ localStorage.setItem(LS_ADMIN_PIN, p1); }catch(e){}
+  alert('관리자 PIN이 변경되었습니다.');
+}
+
+/* ---------- 사용자 권한 관리 (관리자 전용) ---------- */
+function loadUsers(){ return loadJSON(LS_USERS, []); }
+function saveUsers(list){ saveJSON(LS_USERS, list); }
+function loadAccessLog(){ return loadJSON(LS_ACCESS_LOG, []); }
+function pushAccessLog(name){
+  const log = loadAccessLog();
+  log.unshift({name, time: new Date().toLocaleString('ko-KR')});
+  saveJSON(LS_ACCESS_LOG, log.slice(0,50));
+}
+function genCode(){ return String(Math.floor(1000 + Math.random()*9000)); }
+
+function renderUsersPanel(){
+  const users = loadUsers();
+  const log = loadAccessLog();
+  const wrap = $('usersList');
+  if(!users.length){
+    wrap.innerHTML = '<p class="muted">등록된 사용자가 없습니다. 아래 "+ 사용자 추가"로 권한을 부여하세요.</p>';
+  } else {
+    wrap.innerHTML = `<div class="tablewrap"><table>
+      <thead><tr><th>이름</th><th>접근 코드</th><th>상태</th><th>마지막 열람</th><th>관리</th></tr></thead>
+      <tbody>${users.map((u,idx)=>{
+        const lastSeen = log.find(l=>l.name===u.name);
+        return `<tr>
+        <td>${u.name}</td>
+        <td>${u.code}</td>
+        <td>${u.active?'<span class="pill ok">사용</span>':'<span class="pill ng">해제</span>'}</td>
+        <td>${lastSeen ? lastSeen.time : '<span class="muted">기록 없음</span>'}</td>
+        <td>
+          <button class="btn small" data-action="toggle" data-idx="${idx}" type="button">${u.active?'권한 해제':'권한 재부여'}</button>
+          <button class="btn danger small" data-action="remove" data-idx="${idx}" type="button">삭제</button>
+        </td>
+      </tr>`;}).join('')}</tbody>
+    </table></div>`;
+    wrap.querySelectorAll('[data-action=toggle]').forEach(btn=>btn.addEventListener('click', e=>{
+      const list = loadUsers(); const idx = +e.target.dataset.idx;
+      list[idx].active = !list[idx].active; saveUsers(list); renderUsersPanel();
+    }));
+    wrap.querySelectorAll('[data-action=remove]').forEach(btn=>btn.addEventListener('click', e=>{
+      const list = loadUsers(); const idx = +e.target.dataset.idx;
+      if(!confirm(`${list[idx].name}님의 권한을 완전히 삭제할까요?`)) return;
+      list.splice(idx,1); saveUsers(list); renderUsersPanel();
+    }));
+  }
+  $('accessLogList').innerHTML = log.length
+    ? `<ul class="issues">${log.slice(0,10).map(l=>`<li>${l.name} — ${l.time}</li>`).join('')}</ul>`
+    : '<p class="muted">아직 열람 기록이 없습니다.</p>';
+}
+function addUserFlow(){
+  const name = prompt('권한을 부여할 사용자 이름을 입력하세요.');
+  if(!name) return;
+  const list = loadUsers();
+  if(list.some(u=>u.name===name.trim())){ alert('이미 등록된 이름입니다. 이름을 다르게 하거나 기존 사용자를 삭제 후 다시 등록해주세요.'); return; }
+  const code = genCode();
+  list.push({name:name.trim(), code, active:true});
+  saveUsers(list);
+  renderUsersPanel();
+  alert(`"${name.trim()}"님에게 접근 코드 [${code}]가 발급되었습니다.\n이 코드를 해당 사용자에게 직접 전달해주세요 (이 코드는 이 화면에서 다시 확인할 수 있습니다).`);
+}
+function exportUsersFlow(){
+  const data = JSON.stringify({users:loadUsers()});
+  prompt('아래 내용을 복사해 다른 PC의 "가져오기"에 붙여넣으세요 (Ctrl+C):', data);
+}
+function importUsersFlow(){
+  const raw = prompt('내보내기한 내용을 붙여넣으세요.');
+  if(!raw) return;
+  try{
+    const parsed = JSON.parse(raw);
+    if(!Array.isArray(parsed.users)) throw new Error('형식 오류');
+    saveUsers(parsed.users);
+    renderUsersPanel();
+    alert(`${parsed.users.length}명의 사용자 권한을 가져왔습니다.`);
+  }catch(e){
+    alert('가져오기에 실패했습니다. 내보내기 한 내용을 그대로 붙여넣었는지 확인해주세요.');
+  }
+}
+
+$('hamburgerBtn').addEventListener('click', (e)=>{ e.stopPropagation(); toggleNavMenu(); });
+$('drawerCloseBtn').addEventListener('click', closeNavMenu);
+$('drawerBackdrop').addEventListener('click', closeNavMenu);
+$('userLockOutLink').addEventListener('click', handleUserLockOutClick);
+$('changePinBtn').addEventListener('click', changeAdminPin);
+$('addUserBtn').addEventListener('click', addUserFlow);
+$('exportUsersBtn').addEventListener('click', exportUsersFlow);
+$('importUsersBtn').addEventListener('click', importUsersFlow);
+applyView();
+
+/* ---------- 드롭존 (드래그앤드롭) ---------- */
+function wireDropzone(dropEl, inputEl){
+  if(!dropEl || !inputEl) return;
+  ['dragenter','dragover'].forEach(evt=>dropEl.addEventListener(evt, e=>{ e.preventDefault(); dropEl.classList.add('dragover'); }));
+  ['dragleave','drop'].forEach(evt=>dropEl.addEventListener(evt, e=>{ e.preventDefault(); dropEl.classList.remove('dragover'); }));
+  dropEl.addEventListener('drop', e=>{
+    if(e.dataTransfer.files && e.dataTransfer.files.length){
+      inputEl.files = e.dataTransfer.files;
+      inputEl.dispatchEvent(new Event('change', {bubbles:true}));
+    }
+  });
+}
+wireDropzone($('baseDrop'), $('baseFile'));
+wireDropzone($('vendorDrop'), $('vendorFiles'));
+wireDropzone($('prevDrop'), $('prevFile'));
+
+/* ---------- 업체별 증빙 사진 (해당 업체 파일 박스에 딸린 첨부) ---------- */
+function renderVendorPhotoGrid(entry){
+  const grid = entry.photoGridEl;
+  grid.innerHTML = entry.photos.map((p, idx) => `
+    <div class="photo-thumb">
+      <img src="${p.url}" data-idx="${idx}" title="크게 보기">
+      <button class="rm" data-idx="${idx}" type="button" title="삭제">×</button>
+      <input type="text" class="cap" data-idx="${idx}" value="${p.caption||''}" placeholder="메모 (예: 파손 부위, 품목코드)">
+    </div>
+  `).join('');
+  grid.querySelectorAll('img').forEach(img=>img.addEventListener('click', e=>window.open(entry.photos[+e.target.dataset.idx].url, '_blank')));
+  grid.querySelectorAll('.rm').forEach(btn=>btn.addEventListener('click', e=>{
+    const idx = +e.target.dataset.idx;
+    URL.revokeObjectURL(entry.photos[idx].url);
+    entry.photos.splice(idx,1);
+    renderVendorPhotoGrid(entry);
+  }));
+  grid.querySelectorAll('.cap').forEach(inp=>inp.addEventListener('input', e=>{
+    entry.photos[+e.target.dataset.idx].caption = e.target.value;
+  }));
+}
+function buildVendorPhotoUI(entry){
+  const wrap = document.createElement('div');
+  wrap.style.marginTop = '10px';
+  wrap.innerHTML = `
+    <label class="dropzone" style="padding:12px;cursor:pointer;">
+      <div class="dz-icon" style="font-size:18px;">📷</div>
+      <div class="dz-sub" style="margin:0;">이 업체 증빙 사진 첨부 (선택) · 클릭 또는 끌어다 놓으세요</div>
+      <input type="file" accept="image/*" multiple style="display:none">
+    </label>
+    <div class="photo-grid"></div>
+  `;
+  const dz = wrap.querySelector('.dropzone');
+  const input = wrap.querySelector('input[type=file]');
+  entry.photoGridEl = wrap.querySelector('.photo-grid');
+  const addFiles = (files)=>{
+    Array.from(files).forEach(file=>entry.photos.push({file, url:URL.createObjectURL(file), caption:''}));
+    renderVendorPhotoGrid(entry);
+  };
+  input.addEventListener('change', e=>{ addFiles(e.target.files); e.target.value=''; });
+  wireDropzone(dz, input);
+  return wrap;
+}
+
+/* ---------- 규칙 설정 ---------- */
+function renderCustomRules(rules){
+  const wrap = $('customRuleList');
+  wrap.innerHTML = '';
+  rules.forEach((r, idx) => {
+    const row = document.createElement('div');
+    row.className = 'custom-rule';
+    row.innerHTML = `
+      <select data-idx="${idx}" data-f="field">
+        ${['qtyDiffPct','amountDiffPct','baseQty','vendorQty','baseAmount','vendorAmount','baseUnitPrice','vendorUnitPrice']
+          .map(f=>`<option value="${f}" ${r.field===f?'selected':''}>${ruleFieldLabel(f)}</option>`).join('')}
+      </select>
+      <select data-idx="${idx}" data-f="op">
+        ${['>','>=','<','<=','=','!='].map(o=>`<option value="${o}" ${r.op===o?'selected':''}>${o}</option>`).join('')}
+      </select>
+      <input type="number" data-idx="${idx}" data-f="value" value="${r.value ?? 0}" step="0.1">
+      <input type="text" data-idx="${idx}" data-f="label" value="${r.label ?? ''}" placeholder="사유 라벨 (예: 고액 품목 특별관리)">
+      <button class="btn danger small" data-idx="${idx}" data-action="del" type="button">삭제</button>
+    `;
+    wrap.appendChild(row);
+  });
+  wrap.querySelectorAll('select,input').forEach(el=>{
+    el.addEventListener('change', e=>{
+      const idx = +e.target.dataset.idx, f = e.target.dataset.f;
+      let v = e.target.value;
+      if(f==='value') v = parseFloat(v)||0;
+      STATE.rules.custom[idx][f] = v;
+    });
+  });
+  wrap.querySelectorAll('[data-action=del]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const idx = +e.target.dataset.idx;
+      STATE.rules.custom.splice(idx,1);
+      renderCustomRules(STATE.rules.custom);
+    });
+  });
+}
+function ruleFieldLabel(f){
+  return ({
+    qtyDiffPct:'수량 차이(%)', amountDiffPct:'금액 차이(%)',
+    baseQty:'기초 수량', vendorQty:'업체 수량',
+    baseAmount:'기초 금액', vendorAmount:'업체 금액',
+    baseUnitPrice:'기초 단가', vendorUnitPrice:'업체 단가'
+  })[f] || f;
+}
+
+function initRules(){
+  const saved = loadJSON(LS_RULES, {qtyTolerancePct:0, amountTolerancePct:0, momTolerancePct:20, custom:[]});
+  STATE.rules = saved;
+  $('qtyTol').value = saved.qtyTolerancePct;
+  $('amtTol').value = saved.amountTolerancePct;
+  $('momTol').value = saved.momTolerancePct;
+  renderCustomRules(saved.custom);
+}
+$('addRuleBtn').addEventListener('click', ()=>{
+  STATE.rules.custom.push({field:'qtyDiffPct', op:'>', value:10, label:''});
+  renderCustomRules(STATE.rules.custom);
+});
+$('saveRulesBtn').addEventListener('click', ()=>{
+  STATE.rules.qtyTolerancePct = parseFloat($('qtyTol').value)||0;
+  STATE.rules.amountTolerancePct = parseFloat($('amtTol').value)||0;
+  STATE.rules.momTolerancePct = parseFloat($('momTol').value)||0;
+  saveJSON(LS_RULES, STATE.rules);
+  $('rulesDetails').open = false;
+  alert('규칙이 저장되었습니다. 다음 달에도 자동 적용됩니다.');
+});
+
+/* ---------- 파일 파싱 ---------- */
+function readFileAsArrayBuffer(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = e=>resolve(e.target.result);
+    r.onerror = reject;
+    r.readAsArrayBuffer(file);
+  });
+}
+async function parseFirstSheet(file){
+  const buf = await readFileAsArrayBuffer(file);
+  const wb = XLSX.read(buf, {type:'array', cellDates:true});
+  const wsName = wb.SheetNames[0];
+  const ws = wb.Sheets[wsName];
+  const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+  const headers = rows.length ? Object.keys(rows[0]) : (XLSX.utils.sheet_to_json(ws,{header:1})[0]||[]);
+  return {workbook: wb, headers, rows};
+}
+function guessMapping(headers){
+  const map = {};
+  FIELD_DEFS.forEach(fd=>{
+    let found = headers.find(h => fd.synonyms.includes(String(h).trim()));
+    if(!found) found = headers.find(h => fd.synonyms.some(s=>String(h).includes(s)));
+    map[fd.key] = found || '';
+  });
+  return map;
+}
+
+function pad(n){ return String(n).padStart(2,'0'); }
+function normDate(v){
+  if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
+  if(typeof v === 'number' && XLSX.SSF){
+    try{ const d = XLSX.SSF.parse_date_code(v); if(d) return `${d.y}-${pad(d.m)}-${pad(d.d)}`; }catch(e){}
+  }
+  let s = String(v||'').trim().replace(/[.\/]/g,'-');
+  const d2 = new Date(s);
+  if(!isNaN(d2) && s) return `${d2.getFullYear()}-${pad(d2.getMonth()+1)}-${pad(d2.getDate())}`;
+  return s;
+}
+function toNum(v){
+  if(typeof v === 'number') return v;
+  const n = parseFloat(String(v).replace(/[,\s원]/g,''));
+  return isNaN(n) ? 0 : n;
+}
+
+/* 매핑 UI 렌더 */
+function renderMappingUI(container, headers, savedMapping, requireVendor, onConfirm){
+  const mapping = {};
+  FIELD_DEFS.forEach(fd => mapping[fd.key] = (savedMapping && headers.includes(savedMapping[fd.key])) ? savedMapping[fd.key] : (guessMapping(headers)[fd.key] || ''));
+  container.innerHTML = '';
+  const box = document.createElement('div');
+  box.style.marginTop = '12px';
+  box.style.paddingTop = '10px';
+  const title = document.createElement('div');
+  title.innerHTML = '<b style="font-size:12.5px;">컬럼 매핑 확인</b> <span class="hint">(처음 한 번만 확인하면 다음 달부터 자동 적용됩니다)</span>';
+  box.appendChild(title);
+
+  FIELD_DEFS.forEach(fd=>{
+    if(fd.key==='vendor' && !requireVendor) return;
+    const row = document.createElement('div');
+    row.className = 'mapping-row';
+    const isReq = fd.key!=='amount' && fd.key!=='itemName' && !(fd.key==='vendor' && !requireVendor);
+    row.innerHTML = `<label style="margin:0;">${fd.label}${isReq?' <span class="req">*</span>':''}</label>`;
+    const sel = document.createElement('select');
+    sel.innerHTML = `<option value="">-- 선택 안함 --</option>` + headers.map(h=>`<option value="${h}" ${mapping[fd.key]===h?'selected':''}>${h}</option>`).join('');
+    sel.addEventListener('change', ()=>{ mapping[fd.key] = sel.value; });
+    const preview = document.createElement('span');
+    preview.className='hint';
+    row.appendChild(sel);
+    row.appendChild(preview);
+    box.appendChild(row);
+  });
+  container.appendChild(box);
+  return mapping;
+}
+
+/* ---------- 실행 버튼 상태 ---------- */
+function updateRunButtonState(){
+  const ok = !!STATE.base && STATE.vendors.length>0 && !!$('targetMonth').value;
+  $('runBtn').disabled = !ok;
+  $('runHint').style.display = ok ? 'none' : 'block';
+}
+$('targetMonth').addEventListener('input', updateRunButtonState);
+
+/* ---------- 기초자료 업로드 ---------- */
+$('baseFile').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  $('baseFileName').textContent = '✓ ' + file.name;
+  const {headers, rows} = await parseFirstSheet(file);
+  const saved = loadJSON(LS_BASE_MAP, null);
+  const mapping = renderMappingUI($('baseMappingArea'), headers, saved, true);
+  STATE.base = {fileName:file.name, headers, rows, mapping};
+  updateRunButtonState();
+});
+
+/* ---------- 업체 자료 업로드 ---------- */
+$('vendorFiles').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files);
+  STATE.vendors = [];
+  const area = $('vendorMappingArea');
+  area.innerHTML = '';
+  $('vendorFileName').textContent = files.length ? ('✓ ' + files.map(f=>f.name).join(', ')) : '클릭 또는 파일을 끌어다 놓으세요';
+  const savedMap = loadJSON(LS_VENDOR_MAP, null);
+  for(const file of files){
+    const {headers, rows} = await parseFirstSheet(file);
+    const hasVendorCol = headers.some(h => FIELD_DEFS.find(f=>f.key==='vendor').synonyms.includes(String(h).trim()));
+    const fileBox = document.createElement('div');
+    fileBox.className = 'card';
+    fileBox.innerHTML = `<div class="filerow"><span class="tag">업체파일</span><span class="name">${file.name}</span></div>`;
+    if(!hasVendorCol){
+      const vin = document.createElement('div');
+      vin.innerHTML = `<label>이 파일의 업체명 <span class="req">*</span></label><input type="text" class="vendorNameInput" placeholder="예: OO물산">`;
+      fileBox.appendChild(vin);
+    }
+    const mapArea = document.createElement('div');
+    fileBox.appendChild(mapArea);
+    area.appendChild(fileBox);
+    const mapping = renderMappingUI(mapArea, headers, savedMap, hasVendorCol);
+    const entry = {fileName:file.name, headers, rows, mapping, vendorNameOverride:null, box:fileBox, photos:[]};
+    fileBox.appendChild(buildVendorPhotoUI(entry));
+    STATE.vendors.push(entry);
+  }
+  updateRunButtonState();
+});
+
+/* ---------- 전월 결과파일 업로드 ---------- */
+$('prevFile').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file){ STATE.prevSummary = null; return; }
+  $('prevFileName').textContent = '✓ ' + file.name;
+  try{
+    const buf = await readFileAsArrayBuffer(file);
+    const wb = XLSX.read(buf, {type:'array'});
+    const sheetName = wb.SheetNames.find(n=>n.includes('업체별요약')) || wb.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {defval:''});
+    STATE.prevSummary = rows.map(r=>({
+      vendor: String(r['업체명']||'').trim(),
+      qty: toNum(r['총입고수량']),
+      amount: toNum(r['총입고금액'])
+    })).filter(r=>r.vendor);
+    $('prevStatus').textContent = `전월 자료 인식 완료 — 업체 ${STATE.prevSummary.length}곳`;
+  }catch(err){
+    $('prevStatus').textContent = '전월 자료를 읽지 못했습니다. 이 도구가 생성한 엑셀 파일인지 확인해주세요.';
+    STATE.prevSummary = null;
+  }
+});
+
+/* ---------- 검토 실행 ---------- */
+function buildRows(entry, isBase){
+  const m = entry.mapping;
+  const vendorOverrideEl = entry.box ? entry.box.querySelector('.vendorNameInput') : null;
+  const vendorOverride = vendorOverrideEl ? vendorOverrideEl.value.trim() : null;
+  return entry.rows.map(r=>({
+    date: normDate(m.date ? r[m.date] : ''),
+    vendor: (vendorOverride) ? vendorOverride : String(m.vendor ? r[m.vendor] : '').trim(),
+    itemCode: String(m.itemCode ? r[m.itemCode] : '').trim(),
+    itemName: m.itemName ? String(r[m.itemName]).trim() : '',
+    qty: toNum(m.qty ? r[m.qty] : 0),
+    price: toNum(m.price ? r[m.price] : 0),
+    amount: m.amount ? toNum(r[m.amount]) : null,
+  })).filter(r=>r.itemCode);
+}
+function vendorEntryLabel(entry){
+  const el = entry.box ? entry.box.querySelector('.vendorNameInput') : null;
+  return (el && el.value.trim()) ? el.value.trim() : entry.fileName;
+}
+function makeKey(r){ return `${r.itemCode}||${r.vendor}||${r.date}`; }
+function aggregate(rows){
+  const map = new Map();
+  for(const r of rows){
+    const k = makeKey(r);
+    if(!map.has(k)) map.set(k, {...r, qty:0, amount:0, priceSum:0, n:0});
+    const e = map.get(k);
+    e.qty += r.qty;
+    e.amount += (r.amount!=null ? r.amount : r.qty*r.price);
+    e.priceSum += r.price;
+    e.n += 1;
+  }
+  for(const e of map.values()){ e.unitPrice = e.n ? (e.amount / (e.qty||1)) : 0; }
+  return map;
+}
+function pct(diff, base){ return base ? (diff/Math.abs(base))*100 : (diff===0?0:100); }
+function fmtDiff(n){
+  const cls = n===0 ? 'zero' : (n>0 ? 'pos' : 'neg');
+  const sign = n>0 ? '+' : '';
+  return `<span class="diff ${cls}">${sign}${Math.round(n).toLocaleString()}</span>`;
+}
+
+$('runBtn').addEventListener('click', ()=>{
+  if(!STATE.base){ alert('기초자료를 업로드해주세요.'); return; }
+  if(!STATE.vendors.length){ alert('업체별 자료를 업로드해주세요.'); return; }
+  if(!$('targetMonth').value){ alert('검토 대상월을 선택해주세요.'); return; }
+
+  saveJSON(LS_BASE_MAP, STATE.base.mapping);
+  saveJSON(LS_VENDOR_MAP, STATE.vendors[0].mapping);
+  STATE.rules.qtyTolerancePct = parseFloat($('qtyTol').value)||0;
+  STATE.rules.amountTolerancePct = parseFloat($('amtTol').value)||0;
+  STATE.rules.momTolerancePct = parseFloat($('momTol').value)||0;
+  saveJSON(LS_RULES, STATE.rules);
+
+  const baseRows = buildRows(STATE.base, true);
+  let vendorRowsAll = [];
+  for(const v of STATE.vendors) vendorRowsAll = vendorRowsAll.concat(buildRows(v, false));
+
+  if(baseRows.some(r=>!r.vendor)) { alert('기초자료에 업체명이 비어있는 행이 있습니다. 매핑을 확인해주세요.'); return; }
+  if(vendorRowsAll.some(r=>!r.vendor)) { alert('업체 자료 중 업체명이 비어있는 파일이 있습니다. 파일별 업체명을 입력해주세요.'); return; }
+
+  const baseAgg = aggregate(baseRows);
+  const vendorAgg = aggregate(vendorRowsAll);
+  const allKeys = new Set([...baseAgg.keys(), ...vendorAgg.keys()]);
+
+  const detail = [];
+  for(const k of allKeys){
+    const b = baseAgg.get(k);
+    const v = vendorAgg.get(k);
+    const reasons = [];
+    let bQty=0,bAmt=0,bPrice=0,vQty=0,vAmt=0,vPrice=0;
+    let itemCode='', itemName='', vendor='', date='';
+
+    if(b && v){
+      itemCode=b.itemCode; itemName=b.itemName||v.itemName; vendor=b.vendor; date=b.date;
+      bQty=b.qty; bAmt=b.amount; bPrice=b.unitPrice;
+      vQty=v.qty; vAmt=v.amount; vPrice=v.unitPrice;
+      const qtyDiffPct = pct(vQty-bQty, bQty);
+      const amtDiffPct = pct(vAmt-bAmt, bAmt);
+      if(Math.abs(qtyDiffPct) > STATE.rules.qtyTolerancePct) reasons.push(`수량 불일치 (기초 ${bQty} vs 업체 ${vQty}, ${qtyDiffPct>=0?'+':''}${qtyDiffPct.toFixed(1)}%)`);
+      if(Math.abs(amtDiffPct) > STATE.rules.amountTolerancePct) reasons.push(`단가·금액 불일치 (기초 ${Math.round(bAmt).toLocaleString()}원 vs 업체 ${Math.round(vAmt).toLocaleString()}원, ${amtDiffPct>=0?'+':''}${amtDiffPct.toFixed(1)}%)`);
+      STATE.rules.custom.forEach(rule=>{
+        if(!rule.label && rule.value===undefined) return;
+        const vals = {qtyDiffPct, amountDiffPct: amtDiffPct, baseQty:bQty, vendorQty:vQty, baseAmount:bAmt, vendorAmount:vAmt, baseUnitPrice:bPrice, vendorUnitPrice:vPrice};
+        const lhs = vals[rule.field]; const rhs = rule.value;
+        let hit = false;
+        switch(rule.op){
+          case '>': hit = lhs > rhs; break;
+          case '>=': hit = lhs >= rhs; break;
+          case '<': hit = lhs < rhs; break;
+          case '<=': hit = lhs <= rhs; break;
+          case '=': hit = lhs == rhs; break;
+          case '!=': hit = lhs != rhs; break;
+        }
+        if(hit) reasons.push(`[커스텀] ${rule.label || ruleFieldLabel(rule.field)+' '+rule.op+' '+rule.value} (값:${(lhs||0).toFixed(1)})`);
+      });
+    } else if(b && !v){
+      itemCode=b.itemCode; itemName=b.itemName; vendor=b.vendor; date=b.date;
+      bQty=b.qty; bAmt=b.amount; bPrice=b.unitPrice;
+      reasons.push('업체자료 누락 (기초자료에는 있으나 업체 제출자료에 없음)');
+    } else if(v && !b){
+      itemCode=v.itemCode; itemName=v.itemName; vendor=v.vendor; date=v.date;
+      vQty=v.qty; vAmt=v.amount; vPrice=v.unitPrice;
+      reasons.push('기초자료 누락 (업체 제출자료에는 있으나 기초자료에 없음)');
+    }
+
+    detail.push({vendor, date, itemCode, itemName, bQty, vQty, bAmt, vAmt, pass: reasons.length===0, reasons});
+  }
+
+  const vendorNames = [...new Set(detail.map(d=>d.vendor))].sort();
+  const vendorSummary = vendorNames.map(vn=>{
+    const rows = detail.filter(d=>d.vendor===vn);
+    const okCnt = rows.filter(r=>r.pass).length;
+    const ngCnt = rows.length - okCnt;
+    return {
+      vendor: vn,
+      baseQty: rows.reduce((s,r)=>s+r.bQty,0),
+      vendorQty: rows.reduce((s,r)=>s+r.vQty,0),
+      baseAmount: rows.reduce((s,r)=>s+r.bAmt,0),
+      vendorAmount: rows.reduce((s,r)=>s+r.vAmt,0),
+      okCnt, ngCnt
+    };
+  });
+
+  let momRows = [];
+  if(STATE.prevSummary && STATE.prevSummary.length){
+    momRows = vendorSummary.map(vs=>{
+      const prev = STATE.prevSummary.find(p=>p.vendor===vs.vendor);
+      if(!prev) return {vendor:vs.vendor, prevQty:null, curQty:vs.baseQty, qtyChangePct:null, prevAmount:null, curAmount:vs.baseAmount, amtChangePct:null, flag:'전월자료없음(신규거래)'};
+      const qtyChangePct = pct(vs.baseQty-prev.qty, prev.qty);
+      const amtChangePct = pct(vs.baseAmount-prev.amount, prev.amount);
+      const flag = (Math.abs(qtyChangePct) > STATE.rules.momTolerancePct || Math.abs(amtChangePct) > STATE.rules.momTolerancePct) ? '이상변동' : '정상';
+      return {vendor:vs.vendor, prevQty:prev.qty, curQty:vs.baseQty, qtyChangePct, prevAmount:prev.amount, curAmount:vs.baseAmount, amtChangePct, flag};
+    });
+  }
+
+  STATE.results = {detail, vendorSummary, momRows, targetMonth:$('targetMonth').value};
+  renderResults();
+});
+
+/* ---------- 결과 렌더 ---------- */
+function renderResults(){
+  const {detail, vendorSummary, momRows, targetMonth} = STATE.results;
+  const total = detail.length;
+  const ngList = detail.filter(d=>!d.pass);
+  const okCnt = total - ngList.length;
+  const momAbnormal = momRows.filter(m=>m.flag==='이상변동');
+  const allPass = ngList.length===0;
+  const canViewDetail = isDetailUnlocked();
+
+  const area = $('resultsArea');
+  area.innerHTML = '';
+
+  const banner = document.createElement('div');
+  banner.id = 'secSummary';
+  banner.className = 'banner ' + (allPass ? 'ok' : 'ng');
+  banner.textContent = allPass
+    ? `✅ 전체 통과 — ${targetMonth} 입고내역 ${total}건 모두 기초자료와 일치합니다.`
+    : `⚠ 검토 필요 — ${targetMonth} 입고내역 ${total}건 중 ${ngList.length}건 불합격.`;
+  area.appendChild(banner);
+
+  const cards = document.createElement('div');
+  cards.className = 'grid4';
+  cards.innerHTML = `
+    <div class="stat"><span class="icon">📄</span><div class="num">${total}</div><div class="lbl">총 대사 건수</div></div>
+    <div class="stat ok"><span class="icon">✅</span><div class="num">${okCnt}</div><div class="lbl">통과</div></div>
+    <div class="stat ng"><span class="icon">⚠️</span><div class="num">${ngList.length}</div><div class="lbl">불합격</div></div>
+    <div class="stat warn"><span class="icon">📈</span><div class="num">${momAbnormal.length}</div><div class="lbl">전월대비 이상변동 업체</div></div>
+  `;
+  area.appendChild(cards);
+
+  if(!canViewDetail){
+    const locked = document.createElement('div');
+    locked.className = 'card locked-card';
+    locked.innerHTML = `
+      <div class="lock-icon">🔒</div>
+      <h2 style="justify-content:center;box-shadow:none;">상세 자료는 권한이 있어야 볼 수 있습니다</h2>
+      <p>업체·품목별 특이사항, 업체별 요약, 불합격 상세, 전월비교, 엑셀 다운로드는<br>관리자에게 접근코드를 부여받은 사용자만 확인할 수 있습니다.</p>
+      <button class="btn primary" id="unlockFromResultsBtn" type="button">🔒 접근코드로 열람</button>
+    `;
+    area.appendChild(locked);
+    $('unlockFromResultsBtn').addEventListener('click', userUnlockFlow);
+    return;
+  }
+
+  const nav = document.createElement('div');
+  nav.className = 'tabs no-print';
+  let navHtml = `<a class="tab" href="#secSummary">요약</a>`;
+  if(!allPass || momAbnormal.length) navHtml += `<a class="tab" href="#secIssues">특이사항</a>`;
+  navHtml += `<a class="tab" href="#secVendor">업체별 요약</a>`;
+  if(ngList.length) navHtml += `<a class="tab" href="#secDetail">불합격 상세</a>`;
+  if(momRows.length) navHtml += `<a class="tab" href="#secMom">전월비교</a>`;
+  if(STATE.vendors.some(v=>v.photos.length)) navHtml += `<a class="tab" href="#secPhotos">증빙 사진</a>`;
+  navHtml += `<a class="tab" href="#secDownload">엑셀 다운로드</a>`;
+  nav.innerHTML = navHtml;
+  area.insertBefore(nav, banner);
+
+  if(!allPass || momAbnormal.length){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'secIssues';
+    let html = `<h2><span class="h2-ic amber">📌</span> 업체별 특이사항 요약</h2>`;
+    const byVendor = {};
+    ngList.forEach(d=>{ (byVendor[d.vendor] = byVendor[d.vendor]||[]).push(...d.reasons.map(r=>`[${d.itemCode}] ${r}`)); });
+    momAbnormal.forEach(m=>{ (byVendor[m.vendor] = byVendor[m.vendor]||[]).push(`전월 대비 ${m.qtyChangePct===null?'':m.qtyChangePct.toFixed(1)+'%'} 수량변동, ${m.amtChangePct===null?'':m.amtChangePct.toFixed(1)+'%'} 금액변동 (${m.flag})`); });
+    const names = Object.keys(byVendor);
+    if(names.length===0){ html += `<p class="muted">특이사항 없음</p>`; }
+    names.forEach(vn=>{
+      html += `<b>${vn}</b><ul class="issues">${byVendor[vn].map(x=>`<li>${x}</li>`).join('')}</ul>`;
+    });
+    card.innerHTML = html;
+    area.appendChild(card);
+  }
+
+  const sumCard = document.createElement('div');
+  sumCard.className = 'card';
+  sumCard.id = 'secVendor';
+  sumCard.innerHTML = `<h2><span class="h2-ic violet">🏬</span> 업체별 요약</h2><div class="tablewrap"><table>
+    <thead>
+      <tr><th rowspan="2">업체명</th><th colspan="3" style="text-align:center;">수량</th><th colspan="3" style="text-align:center;">금액</th><th rowspan="2" class="num">통과</th><th rowspan="2" class="num">불합격</th></tr>
+      <tr><th class="num">기초</th><th class="num">업체</th><th class="num">차이</th><th class="num">기초</th><th class="num">업체</th><th class="num">차이</th></tr>
+    </thead>
+    <tbody>${vendorSummary.map(v=>`<tr><td>${v.vendor}</td><td class="num">${v.baseQty.toLocaleString()}</td><td class="num">${v.vendorQty.toLocaleString()}</td><td class="num">${fmtDiff(v.vendorQty-v.baseQty)}</td><td class="num">${Math.round(v.baseAmount).toLocaleString()}</td><td class="num">${Math.round(v.vendorAmount).toLocaleString()}</td><td class="num">${fmtDiff(v.vendorAmount-v.baseAmount)}</td><td class="num"><span class="pill ok">${v.okCnt}</span></td><td class="num">${v.ngCnt?`<span class="pill ng">${v.ngCnt}</span>`:'0'}</td></tr>`).join('')}</tbody>
+  </table></div>`;
+  area.appendChild(sumCard);
+
+  if(ngList.length){
+    const c = document.createElement('div');
+    c.className = 'card';
+    c.id = 'secDetail';
+    const vendorOptions = ['전체'].concat([...new Set(ngList.map(d=>d.vendor))]);
+    c.innerHTML = `<h2><span class="h2-ic red">❗</span> 불합격 상세 (${ngList.length}건)</h2>
+      <div class="filterbar no-print"><label style="margin:0;">업체 필터</label><select id="detailVendorFilter">${vendorOptions.map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
+      <div class="tablewrap"><table id="detailTable">
+      <thead>
+        <tr><th rowspan="2">업체명</th><th rowspan="2">입고일자</th><th rowspan="2">품목코드</th><th rowspan="2">품목명</th><th colspan="3" style="text-align:center;">수량</th><th colspan="3" style="text-align:center;">금액</th><th rowspan="2">사유</th></tr>
+        <tr><th class="num">기초</th><th class="num">업체</th><th class="num">차이</th><th class="num">기초</th><th class="num">업체</th><th class="num">차이</th></tr>
+      </thead>
+      <tbody>${ngList.map(d=>`<tr data-vendor="${d.vendor}"><td>${d.vendor}</td><td>${d.date}</td><td>${d.itemCode}</td><td>${d.itemName}</td><td class="num">${d.bQty.toLocaleString()}</td><td class="num">${d.vQty.toLocaleString()}</td><td class="num">${fmtDiff(d.vQty-d.bQty)}</td><td class="num">${Math.round(d.bAmt).toLocaleString()}</td><td class="num">${Math.round(d.vAmt).toLocaleString()}</td><td class="num">${fmtDiff(d.vAmt-d.bAmt)}</td><td class="reason">${d.reasons.join('<br>')}</td></tr>`).join('')}</tbody>
+    </table></div>`;
+    area.appendChild(c);
+    $('detailVendorFilter').addEventListener('change', (e)=>{
+      const v = e.target.value;
+      c.querySelectorAll('#detailTable tbody tr').forEach(tr=>{
+        tr.style.display = (v==='전체' || tr.dataset.vendor===v) ? '' : 'none';
+      });
+    });
+  }
+
+  if(momRows.length){
+    const c = document.createElement('div');
+    c.className = 'card';
+    c.id = 'secMom';
+    c.innerHTML = `<h2><span class="h2-ic">📆</span> 전월 대비 비교</h2><div class="tablewrap"><table>
+      <thead><tr><th>업체명</th><th class="num">전월수량</th><th class="num">이번달수량</th><th class="num">수량증감%</th><th class="num">전월금액</th><th class="num">이번달금액</th><th class="num">금액증감%</th><th>상태</th></tr></thead>
+      <tbody>${momRows.map(m=>`<tr><td>${m.vendor}</td><td class="num">${m.prevQty===null?'-':m.prevQty.toLocaleString()}</td><td class="num">${m.curQty.toLocaleString()}</td><td class="num">${m.qtyChangePct===null?'-':m.qtyChangePct.toFixed(1)+'%'}</td><td class="num">${m.prevAmount===null?'-':Math.round(m.prevAmount).toLocaleString()}</td><td class="num">${Math.round(m.curAmount).toLocaleString()}</td><td class="num">${m.amtChangePct===null?'-':m.amtChangePct.toFixed(1)+'%'}</td><td><span class="pill ${m.flag==='이상변동'?'warn':'ok'}">${m.flag}</span></td></tr>`).join('')}</tbody>
+    </table></div>`;
+    area.appendChild(c);
+  }
+
+  const vendorsWithPhotos = STATE.vendors.filter(v=>v.photos.length);
+  const totalPhotoCount = vendorsWithPhotos.reduce((s,v)=>s+v.photos.length,0);
+  if(totalPhotoCount){
+    const pc = document.createElement('div');
+    pc.className = 'card';
+    pc.id = 'secPhotos';
+    pc.innerHTML = `<h2><span class="h2-ic pink">📷</span> 업체별 증빙 사진 (${totalPhotoCount}장)</h2>` +
+      vendorsWithPhotos.map(v=>`
+        <div style="margin-bottom:14px;">
+          <b>${vendorEntryLabel(v)}</b>
+          <div class="photo-grid">${v.photos.map(p=>`
+            <div class="photo-thumb">
+              <img src="${p.url}" title="크게 보기">
+              <input class="cap" value="${p.caption||''}" readonly style="pointer-events:none;">
+            </div>`).join('')}</div>
+        </div>`).join('');
+    area.appendChild(pc);
+    pc.querySelectorAll('img').forEach(img=>{
+      img.addEventListener('click', ()=>window.open(img.src, '_blank'));
+    });
+  }
+
+  const dl = document.createElement('div');
+  dl.className = 'card';
+  dl.id = 'secDownload';
+  dl.innerHTML = `<h2><span class="h2-ic green">💾</span> 결과 저장</h2><div class="row">
+      <button class="btn primary" id="downloadBtn" style="flex:2;padding:12px;">결과 엑셀 다운로드 (${targetMonth})</button>
+      <button class="btn no-print" id="printBtn" style="flex:1;padding:12px;" type="button">인쇄 / PDF 저장 (상사 결재용)</button>
+    </div>
+    ${totalPhotoCount ? `<div class="row" style="margin-top:10px;"><button class="btn no-print" id="downloadZipBtn" style="flex:1;padding:12px;" type="button">📦 엑셀+증빙사진 ZIP 다운로드</button></div>` : ''}
+    <div class="hint" style="margin-top:8px;">※ 이 엑셀의 "업체별요약" 시트를 다음 달 도구 실행 시 "전월 결과파일"로 그대로 업로드하면 전월비교가 자동 적용됩니다.</div>`;
+  area.appendChild(dl);
+  $('downloadBtn').addEventListener('click', downloadExcel);
+  $('printBtn').addEventListener('click', ()=>window.print());
+  if(totalPhotoCount) $('downloadZipBtn').addEventListener('click', downloadZip);
+}
+
+function buildWorkbook(){
+  const {detail, vendorSummary, momRows} = STATE.results;
+  const wb = XLSX.utils.book_new();
+
+  const wsSummary = XLSX.utils.json_to_sheet(vendorSummary.map(v=>({
+    '업체명':v.vendor, '총입고수량':v.baseQty, '총입고금액':Math.round(v.baseAmount),
+    '업체제출수량':v.vendorQty, '업체제출금액':Math.round(v.vendorAmount),
+    '수량차이':v.vendorQty-v.baseQty, '금액차이':Math.round(v.vendorAmount-v.baseAmount),
+    '통과건수':v.okCnt, '불합격건수':v.ngCnt
+  })));
+  XLSX.utils.book_append_sheet(wb, wsSummary, '업체별요약');
+
+  const passRows = detail.filter(d=>d.pass).map(d=>({
+    '업체명':d.vendor,'입고일자':d.date,'품목코드':d.itemCode,'품목명':d.itemName,
+    '수량':d.bQty,'금액':Math.round(d.bAmt)
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(passRows), '통과내역');
+
+  const ngRows = detail.filter(d=>!d.pass).map(d=>({
+    '업체명':d.vendor,'입고일자':d.date,'품목코드':d.itemCode,'품목명':d.itemName,
+    '기초수량':d.bQty,'업체수량':d.vQty,'수량차이':d.vQty-d.bQty,
+    '기초금액':Math.round(d.bAmt),'업체금액':Math.round(d.vAmt),'금액차이':Math.round(d.vAmt-d.bAmt),
+    '사유':d.reasons.join(' / ')
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ngRows), '불합격상세');
+
+  if(momRows.length){
+    const momOut = momRows.map(m=>({
+      '업체명':m.vendor,'전월수량':m.prevQty,'이번달수량':m.curQty,'수량증감%':m.qtyChangePct===null?'':m.qtyChangePct.toFixed(1),
+      '전월금액':m.prevAmount===null?'':Math.round(m.prevAmount),'이번달금액':Math.round(m.curAmount),'금액증감%':m.amtChangePct===null?'':m.amtChangePct.toFixed(1),
+      '상태':m.flag
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(momOut), '전월비교');
+  }
+
+  const rulesOut = [{
+    '수량허용오차%':STATE.rules.qtyTolerancePct, '단가금액허용오차%':STATE.rules.amountTolerancePct, '전월비교임계치%':STATE.rules.momTolerancePct
+  }].concat(STATE.rules.custom.map(r=>({'커스텀규칙':`${ruleFieldLabel(r.field)} ${r.op} ${r.value}`, '라벨':r.label})));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rulesOut), '규칙설정');
+
+  const vendorsWithPhotos = STATE.vendors.filter(v=>v.photos.length);
+  if(vendorsWithPhotos.length){
+    const photoOut = [];
+    vendorsWithPhotos.forEach(v=>{
+      v.photos.forEach((p,idx)=>photoOut.push({'업체(파일)':vendorEntryLabel(v), '번호':idx+1, '파일명':p.file.name, '메모':p.caption||''}));
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(photoOut), '증빙사진목록');
+  }
+
+  return wb;
+}
+function downloadExcel(){
+  const wb = buildWorkbook();
+  XLSX.writeFile(wb, `입고내역검토결과_${STATE.results.targetMonth}.xlsx`);
+}
+async function downloadZip(){
+  const btn = $('downloadZipBtn');
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = '압축 중...';
+  try{
+    const wb = buildWorkbook();
+    const wbArray = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+    const zip = new JSZip();
+    zip.file(`입고내역검토결과_${STATE.results.targetMonth}.xlsx`, wbArray);
+    const root = zip.folder('증빙사진');
+    STATE.vendors.filter(v=>v.photos.length).forEach(v=>{
+      const vf = root.folder(vendorEntryLabel(v).replace(/[\\/:*?"<>|]/g,'_'));
+      v.photos.forEach(p=>vf.file(p.file.name, p.file));
+    });
+    const blob = await zip.generateAsync({type:'blob'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `입고내역검토_${STATE.results.targetMonth}.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } finally {
+    btn.disabled = false; btn.textContent = origText;
+  }
+}
+
+initRules();
+updateRunButtonState();
+</script>
+</body>
+</html>
